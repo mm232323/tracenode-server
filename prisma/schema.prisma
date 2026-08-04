@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Visibility {
+  PRIVATE
+  PUBLIC
+}
+
+enum Framework {
+  NESTJS
+  NEXTJS
+  EXPRESS
+  ASPNET
+  SPRING
+  LARAVEL
+  DJANGO
+  GO
+  FASTAPI
+  FLASK
+  OTHER
+}
+
+enum NodeType {
+  CONTROLLER
+  SERVICE
+  MODULE
+  ENTITY
+  DTO
+  INTERFACE
+  MIDDLEWARE
+  ROUTE
+  API
+  DATABASE
+  MODEL
+  CLASS
+  FUNCTION
+  FILE
+  FOLDER
+  OTHER
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.Uuid
+
+  email            String?  @unique
+  username         String?  @unique
+  fullName         String?  @map("full_name")
+
+  hashedPassword   String?  @map("hashed_password")
+
+  avatarImg        String?  @map("avatar_img")
+  bio              String?
+
+  googleId         String?  @unique @map("google_id")
+  githubId         String?  @unique @map("github_id")
+
+  accessToken      String?  @map("access_token")
+  refreshToken     String?  @map("refresh_token")
+  lastLogin        DateTime? @map("last_login")
+
+  planId           BigInt?  @map("plan_id")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("modified_at")
+
+  plan             Plan?         @relation(fields: [planId], references: [id])
+
+  repositories     Repository[]
+  projects         Project[]
+  usages           Usage[]
+
+  @@map("users")
+}
+
+model Plan {
+  id              BigInt @id @default(autoincrement())
+
+  name            String  @unique
+
+  apiLimit        Decimal @map("api_limit")
+  mappingLimit    Decimal @map("mapping_limit")
+
+  monthlyPrice    Float?  @map("monthly_price")
+  yearlyPrice     Float?  @map("annual_price")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  users           User[]
+  usages          Usage[]
+
+  @@map("plans")
+}
+
+model Usage {
+  id            BigInt @id @default(autoincrement())
+
+  userId        String @db.Uuid @map("user_id")
+  planId        BigInt @map("plan_id")
+
+  apiUsed       Decimal @default(0) @map("api_used")
+  mappingUsed   Float   @default(0) @map("mapping_used")
+
+  expireDate    DateTime? @map("expire_date")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user          User @relation(fields: [userId], references: [id])
+  plan          Plan @relation(fields: [planId], references: [id])
+
+  @@map("usage")
+}
+
+model Repository {
+  id            BigInt @id @default(autoincrement())
+
+  userId        String @db.Uuid @map("user_id")
+
+  repoName      String @map("repo_name")
+  owner         String?
+  branch        String? @default("main")
+
+  githubId      String?
+  githubUrl     String?
+
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user          User @relation(fields: [userId], references: [id])
+
+  projects      Project[]
+
+  @@map("repositories")
+}
+
+model Project {
+  id              BigInt @id @default(autoincrement())
+
+  userId          String @db.Uuid @map("user_id")
+  repositoryId    BigInt @map("git_repo_id")
+
+  name            String
+
+  framework       Framework
+
+  visibility      Visibility @default(PRIVATE)
+
+  tags            String?
+
+  totalNodes      Int @default(0)
+  totalEdges      Int @default(0)
+
+  lastScannedAt   DateTime? @map("last_scanned_at")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("modified_at")
+
+  repository      Repository @relation(fields: [repositoryId], references: [id])
+  user            User @relation(fields: [userId], references: [id])
+
+  nodes           Node[]
+  scans           Scan[]
+
+  @@map("projects")
+}
+
+model Scan {
+  id            BigInt @id @default(autoincrement())
+
+  projectId     BigInt
+
+  commitHash    String?
+  branch        String?
+
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+
+  durationMs    Int?
+
+  status        String
+
+  project        Project @relation(fields: [projectId], references: [id])
+
+  @@map("scans")
+}
+
+model Node {
+  id            BigInt @id @default(autoincrement())
+
+  projectId     BigInt
+
+  name          String
+
+  type          NodeType
+
+  filePath      String @map("file_path")
+
+  description   String?
+
+  codeSnippet   String? @map("code_snippet")
+
+  lineStart     Int?
+  lineEnd       Int?
+
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  project        Project @relation(fields: [projectId], references: [id])
+
+  apis           Api[]
+  outgoingEdges  Edge[] @relation("SourceNode")
+  incomingEdges  Edge[] @relation("TargetNode")
+
+  @@map("nodes")
+}
+
+model Edge {
+  id            BigInt @id @default(autoincrement())
+
+  sourceNodeId  BigInt
+  targetNodeId  BigInt
+
+  relation      String
+
+  sourceNode    Node @relation("SourceNode", fields: [sourceNodeId], references: [id])
+  targetNode    Node @relation("TargetNode", fields: [targetNodeId], references: [id])
+
+  @@map("edges")
+}
+
+model Api {
+  id                BigInt @id @default(autoincrement())
+
+  nodeId            BigInt
+
+  method            String
+  path              String
+
+  requestSchema     Json? @map("requested_schema")
+  responseSchema    Json? @map("responsed_schema")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  node              Node @relation(fields: [nodeId], references: [id])
+
+  @@map("apis")
+}
