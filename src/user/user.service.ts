@@ -29,6 +29,60 @@ export class UserService {
       where: { email },
     });
   }
+  async GetByGithubIdAsync(githubId: string) {
+    return await this.db.user.findFirst({
+      where: { githubId },
+    });
+  }
+  async UpsertGithubUserAsync(data: {
+    githubId: string;
+    email?: string;
+    fullName?: string;
+    username?: string;
+    avatarImg?: string;
+    accessToken?: string;
+  }) {
+    let user: any = null;
+    if (data.githubId) {
+      user = await this.db.user.findFirst({
+        where: { githubId: data.githubId },
+      });
+    }
+
+    if (!user && data.email) {
+      user = await this.db.user.findFirst({
+        where: { email: data.email },
+      });
+    }
+
+    if (user) {
+      const updatedUser = await this.db.user.update({
+        where: { id: user.id },
+        data: {
+          githubId: data.githubId || user.githubId,
+          fullName: data.fullName || user.fullName,
+          username: data.username || user.username,
+          avatarImg: data.avatarImg || user.avatarImg,
+          accessToken: data.accessToken || user.accessToken,
+          lastLogin: new Date(),
+        },
+      });
+      return { user: this.sanitizeUser(updatedUser) };
+    }
+
+    const createdUser = await this.db.user.create({
+      data: {
+        githubId: data.githubId,
+        email: data.email || null,
+        fullName: data.fullName || null,
+        username: data.username || null,
+        avatarImg: data.avatarImg || null,
+        accessToken: data.accessToken || null,
+        lastLogin: new Date(),
+      },
+    });
+    return { user: this.sanitizeUser(createdUser) };
+  }
   async GetByIdAsync(userId: string): Promise<UserResponseDto> {
     const user = await this.db.user.findUnique({
       where: {

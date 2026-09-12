@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dtos/register.dto';
 import { LoginDto } from './dtos/login.dto';
+import { GithubAuthDto } from './dtos/github-auth.dto';
 import { UserService } from 'src/user/user.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthResponseDto, LogoutResponseDto } from './dtos/auth-response.dto';
@@ -46,6 +47,15 @@ export class AuthService {
     const sanitizedUser = this.sanitizeUser(user);
     return {
       user: sanitizedUser,
+      accessToken,
+    };
+  }
+
+  async githubLogin(githubAuthDto: GithubAuthDto): Promise<AuthResponseDto> {
+    const { user } = await this.usersService.UpsertGithubUserAsync(githubAuthDto);
+    const accessToken = this.generateToken(user);
+    return {
+      user,
       accessToken,
     };
   }
