@@ -45,205 +45,205 @@ enum NodeType {
 }
 
 model User {
-  id               String   @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
 
-  email            String?  @unique
-  username         String?  @unique
-  fullName         String?  @map("full_name")
+  email    String? @unique
+  username String? @unique
+  fullName String? @map("full_name")
 
-  hashedPassword   String?  @map("hashed_password")
+  hashedPassword String? @map("hashed_password")
 
-  avatarImg        String?  @map("avatar_img")
-  bio              String?
+  avatarImg String? @map("avatar_img")
+  bio       String?
 
-  googleId         String?  @unique @map("google_id")
-  githubId         String?  @unique @map("github_id")
+  googleId String? @unique @map("google_id")
+  githubId String? @unique @map("github_id")
 
-  accessToken      String?  @map("access_token")
-  refreshToken     String?  @map("refresh_token")
-  lastLogin        DateTime? @map("last_login")
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  lastLogin    DateTime? @map("last_login")
 
-  planId           BigInt?  @map("plan_id")
+  planId Int? @map("plan_id")
 
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("modified_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  modifiedAt DateTime @updatedAt @map("modified_at")
 
-  plan             Plan?         @relation(fields: [planId], references: [id])
+  plan Plan? @relation(fields: [planId], references: [id])
 
-  repositories     Repository[]
-  projects         Project[]
-  usages           Usage[]
+  repositories Repository[]
+  projects     Project[]
+  usages       Usage[]
 
   @@map("users")
 }
 
 model Plan {
-  id              BigInt @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  name            String  @unique
+  name String @unique
 
-  apiLimit        Decimal @map("api_limit")
-  mappingLimit    Decimal @map("mapping_limit")
+  apiLimit     Decimal @map("api_limit")
+  mappingLimit Decimal @map("mapping_limit")
 
-  monthlyPrice    Float?  @map("monthly_price")
-  yearlyPrice     Float?  @map("annual_price")
+  monthlyPrice Float? @map("monthly_price")
+  yearlyPrice  Float? @map("annual_price")
 
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  users           User[]
-  usages          Usage[]
+  users  User[]
+  usages Usage[]
 
   @@map("plans")
 }
 
 model Usage {
-  id            BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  userId        String @db.Uuid @map("user_id")
-  planId        BigInt @map("plan_id")
+  userId String @map("user_id") @db.Uuid
+  planId Int    @map("plan_id")
 
-  apiUsed       Decimal @default(0) @map("api_used")
-  mappingUsed   Float   @default(0) @map("mapping_used")
+  apiUsed     Decimal @default(0) @map("api_used")
+  mappingUsed Float   @default(0) @map("mapping_used")
 
-  expireDate    DateTime? @map("expire_date")
+  expireDate DateTime? @map("expire_date")
 
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  user          User @relation(fields: [userId], references: [id])
-  plan          Plan @relation(fields: [planId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  plan Plan @relation(fields: [planId], references: [id])
 
   @@map("usage")
 }
 
 model Repository {
-  id            BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  userId        String @db.Uuid @map("user_id")
+  userId String @map("user_id") @db.Uuid
 
-  repoName      String @map("repo_name")
-  owner         String?
-  branch        String? @default("main")
+  repoName String  @map("repo_name")
+  owner    String?
+  branch   String? @default("main")
 
-  githubId      String?
-  githubUrl     String?
+  githubId  String?
+  githubUrl String?
 
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  user          User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
-  projects      Project[]
+  projects Project[]
 
   @@map("repositories")
 }
 
 model Project {
-  id              BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  userId          String @db.Uuid @map("user_id")
-  repositoryId    BigInt @map("git_repo_id")
+  userId       String @map("user_id") @db.Uuid
+  repositoryId BigInt @map("git_repo_id")
 
-  name            String
+  name String
 
-  framework       Framework
+  framework Framework
 
-  visibility      Visibility @default(PRIVATE)
+  visibility Visibility @default(PRIVATE)
 
-  tags            String?
+  tags String?
 
-  totalNodes      Int @default(0)
-  totalEdges      Int @default(0)
+  totalNodes Int @default(0)
+  totalEdges Int @default(0)
 
-  lastScannedAt   DateTime? @map("last_scanned_at")
+  lastScannedAt DateTime? @map("last_scanned_at")
 
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("modified_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  modifiedAt DateTime @updatedAt @map("modified_at")
 
-  repository      Repository @relation(fields: [repositoryId], references: [id])
-  user            User @relation(fields: [userId], references: [id])
+  repository Repository @relation(fields: [repositoryId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
 
-  nodes           Node[]
-  scans           Scan[]
+  nodes Node[]
+  scans Scan[]
 
   @@map("projects")
 }
 
 model Scan {
-  id            BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  projectId     BigInt
+  projectId BigInt
 
-  commitHash    String?
-  branch        String?
+  commitHash String?
+  branch     String?
 
-  startedAt     DateTime @default(now())
-  finishedAt    DateTime?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
 
-  durationMs    Int?
+  durationMs Int?
 
-  status        String
+  status String
 
-  project        Project @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
 
   @@map("scans")
 }
 
 model Node {
-  id            BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  projectId     BigInt
+  projectId BigInt
 
-  name          String
+  name String
 
-  type          NodeType
+  type NodeType
 
-  filePath      String @map("file_path")
+  filePath String @map("file_path")
 
-  description   String?
+  description String?
 
-  codeSnippet   String? @map("code_snippet")
+  codeSnippet String? @map("code_snippet")
 
-  lineStart     Int?
-  lineEnd       Int?
+  lineStart Int?
+  lineEnd   Int?
 
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  project        Project @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
 
-  apis           Api[]
-  outgoingEdges  Edge[] @relation("SourceNode")
-  incomingEdges  Edge[] @relation("TargetNode")
+  apis          Api[]
+  outgoingEdges Edge[] @relation("SourceNode")
+  incomingEdges Edge[] @relation("TargetNode")
 
   @@map("nodes")
 }
 
 model Edge {
-  id            BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  sourceNodeId  BigInt
-  targetNodeId  BigInt
+  sourceNodeId BigInt
+  targetNodeId BigInt
 
-  relation      String
+  relation String
 
-  sourceNode    Node @relation("SourceNode", fields: [sourceNodeId], references: [id])
-  targetNode    Node @relation("TargetNode", fields: [targetNodeId], references: [id])
+  sourceNode Node @relation("SourceNode", fields: [sourceNodeId], references: [id])
+  targetNode Node @relation("TargetNode", fields: [targetNodeId], references: [id])
 
   @@map("edges")
 }
 
 model Api {
-  id                BigInt @id @default(autoincrement())
+  id BigInt @id @default(autoincrement())
 
-  nodeId            BigInt
+  nodeId BigInt
 
-  method            String
-  path              String
+  method String
+  path   String
 
-  requestSchema     Json? @map("requested_schema")
-  responseSchema    Json? @map("responsed_schema")
+  requestSchema  Json? @map("requested_schema")
+  responseSchema Json? @map("responsed_schema")
 
-  createdAt         DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  node              Node @relation(fields: [nodeId], references: [id])
+  node Node @relation(fields: [nodeId], references: [id])
 
   @@map("apis")
 }

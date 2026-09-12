@@ -10,6 +10,7 @@ import { RegisterDto } from './dtos/register.dto';
 import { LoginDto } from './dtos/login.dto';
 import { UserService } from 'src/user/user.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { AuthResponseDto, LogoutResponseDto } from './dtos/auth-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -20,21 +21,20 @@ export class AuthService {
     private db: PrismaService,
   ) {}
 
-  async register(registerDto: RegisterDto) {
-    const user = await this.usersService.create(registerDto);
-    const accessToken = this.generateToken(user);
-
+  async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
+    const userResponse = await this.usersService.CreateAsync(registerDto);
+    const accessToken = this.generateToken(userResponse.user);
     return {
-      user: this.sanitizeUser(user),
+      user: userResponse.user,
       accessToken,
     };
   }
 
-  async login(loginDto: LoginDto) {
-    const user = await this.usersService.findByEmail(loginDto.email);
+  async login(loginDto: LoginDto): Promise<AuthResponseDto> {
+    const user = await this.usersService.GetByEmailAsync(loginDto.email);
     const isPasswordValid = await bcrypt.compare(
       loginDto.password,
-      user.hashedPassword,
+      user?.hashedPassword ?? "",
     );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -42,24 +42,26 @@ export class AuthService {
 
     const accessToken = this.generateToken(user);
     this.db.user.update({where:{email:loginDto.email},data:{lastLogin:new Date()}})
+    
+    const sanitizedUser = this.sanitizeUser(user);
     return {
-      user: this.sanitizeUser(user),
+      user: sanitizedUser,
       accessToken,
     };
   }
 
   async validateUser(userId: string) {
-    return this.usersService.findById(userId);
+    return this.usersService.GetByIdAsync(userId);
   }
 
-  async logout(userId: string): Promise<{ success: boolean; message: string }> {
+  async logout(userId: string): Promise<LogoutResponseDto> {
     try {
-      const user = await this.usersService.findById(userId);
+      const userResponse = await this.usersService.GetByIdAsync(userId);
 
       await this.clearRefreshToken(userId);
 
       this.logger.log(
-        `User ${user.email} (ID: ${userId}) logged out successfully`,
+        `User ${userResponse.user?.email} (ID: ${userId}) logged out successfully`,
       );
 
       return {
@@ -92,8 +94,8 @@ generateToken(user: any) {
   });
 }
 
-private sanitizeUser(user: any) {
-  const { hashedPassword, refreshToken, ...sanitized } = user;
+private sanitizeUser(user: any): Omit<any, 'hashedPassword' | 'refreshToken' | 'accessToken'> {
+  const { hashedPassword, refreshToken, accessToken, ...sanitized } = user;
   return sanitized;
 }
 }

@@ -2,11 +2,11 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { RegisterDto } from 'src/auth/dtos/register.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import { UserDto } from './dtos/user.schema';
+import { UserDto, UserResponseDto } from './dtos/user.schema';
 @Injectable()
 export class UserService {
   db = new PrismaService();
-  async create(user: RegisterDto) {
+  async CreateAsync(user: RegisterDto): Promise<UserResponseDto> {
     const existingUser = await this.db.user.findFirst({
       where: { email: user.email },
     });
@@ -14,27 +14,50 @@ export class UserService {
       throw new ConflictException('User already exists');
     }
 
-    const userData = { ...user };
-
-    if (userData.password) {
-      userData.hashed_password = await bcrypt.hash(userData.password, 10);
-      await this.db.user.update({
-        where: { email: userData.email },
-        data: { hashedPassword: userData.hashed_password },
-      });
-    }
-
-    return await this.db.user.create({
+    const { password, ...rest } = user; // strip plaintext password out entirely
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const createdUser = await this.db.user.create({
       data: {
-        ...userData,
+        ...rest,
+        hashedPassword,
       },
     });
+    return { user: this.sanitizeUser(createdUser) };
   }
-  async findByEmail(email: string) {
-    return await this.db.user.findFirstOrThrow({ where: { email: email } });
+  async GetByEmailAsync(email: string) {
+    return await this.db.user.findFirst({
+      where: { email },
+    });
   }
-  async findById(userId: string) {
-    return await this.db.user.findFirstOrThrow({ where: { id: userId } });
+  async GetByIdAsync(userId: string): Promise<UserResponseDto> {
+    const user = await this.db.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        plan: true,
+      }
+    });
+    console.log('user', user);
+    return { user: this.sanitizeUser(user) };
   }
-  async update(userId: string, data: Partial<UserDto>) {}
+  async UpdateAsync(userId: string, data: Partial<UserDto>): Promise<UserResponseDto> {
+    const updateData: any = { ...data };
+    
+    // Handle null values properly for Prisma
+    if (updateData.planId === null) {
+      updateData.planId = null;
+    }
+    
+    const updatedUser = await this.db.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+    return { user: this.sanitizeUser(updatedUser) };
+  }
+
+  private sanitizeUser(user: any): Omit<UserDto, 'hashedPassword' | 'refreshToken' | 'accessToken'> {
+    const { hashedPassword, refreshToken, accessToken, ...sanitized } = user;
+    return sanitized;
+  }
 }

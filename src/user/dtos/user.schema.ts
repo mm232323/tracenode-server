@@ -14,6 +14,7 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PlanDto } from '../../plan/dtos/plan.dto';
 
 // Base User Class with validation
 export class UserDto {
@@ -80,7 +81,8 @@ export class UserDto {
 
   @IsNumber()
   @IsOptional()
-  planId: bigint | null;
+  @Type(() => Number)
+  planId?: number | null;
 
   @IsDate()
   @Type(() => Date)
@@ -89,6 +91,9 @@ export class UserDto {
   @IsDate()
   @Type(() => Date)
   updatedAt: Date;
+
+  @IsOptional()
+  plan?: PlanDto;
 
   constructor(partial: Partial<UserDto> = {}) {
     Object.assign(this, partial);
@@ -106,4 +111,12 @@ export class UserDto {
   hasPassword(): boolean {
     return !!this.hashedPassword;
   }
+}
+
+export class UserResponseDto {
+  user: Omit<UserDto, 'hashedPassword' | 'refreshToken' | 'accessToken'>;
+}
+
+export class UserListResponseDto {
+  users: Omit<UserDto, 'hashedPassword' | 'refreshToken' | 'accessToken'>[];
 }
