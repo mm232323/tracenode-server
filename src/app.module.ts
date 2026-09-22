@@ -10,6 +10,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { CommunityModule } from './community/community.module';
 import { NotificationModule } from './notification/notification.module';
 import { UsageModule } from './usage/usage.module';
+import { ScanModule } from './scan/scan.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { UsageModule } from './usage/usage.module';
     CommunityModule,
     NotificationModule,
     UsageModule,
+    ScanModule,
   ],
 })
 export class AppModule {}

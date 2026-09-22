@@ -1,5 +1,25 @@
 import { IsString, IsNumber, IsOptional } from 'class-validator';
 
+export class ScanBudget {
+  @IsNumber()
+  maxFolders: number;
+
+  @IsNumber()
+  maxFiles: number;
+
+  @IsNumber()
+  maxDeepFiles: number;
+
+  @IsNumber()
+  maxAiTokens: number;
+
+  @IsNumber()
+  maxAiRequests: number;
+
+  @IsNumber()
+  maxRepositorySize: number; // in MB
+}
+
 export class PlanDto {
   id: number;
 
@@ -17,6 +37,9 @@ export class PlanDto {
   @IsNumber()
   @IsOptional()
   yearlyPrice?: number;
+
+  @IsOptional()
+  scanBudget?: ScanBudget;
 
   createdAt: Date;
 }

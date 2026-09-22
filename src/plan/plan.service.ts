@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserService } from 'src/user/user.service';
-import { PlanListResponseDto, PlanResponseDto, PlanDto } from './dtos/plan.dto';
+import { PlanListResponseDto, PlanResponseDto, PlanDto, ScanBudget } from './dtos/plan.dto';
 
 @Injectable()
 export class PlanService {
@@ -13,6 +13,14 @@ export class PlanService {
       ...plan,
       apiLimit: typeof plan.apiLimit === 'object' ? Number(plan.apiLimit) : plan.apiLimit,
       mappingLimit: typeof plan.mappingLimit === 'object' ? Number(plan.mappingLimit) : plan.mappingLimit,
+      scanBudget: {
+        maxFolders: plan.maxFolders,
+        maxFiles: plan.maxFiles,
+        maxDeepFiles: plan.maxDeepFiles,
+        maxAiRequests: plan.maxAiRequests,
+        maxAiTokens: plan.maxAiTokens,
+        maxRepositorySize: plan.maxRepoSizeMb,
+      } as ScanBudget,
     }));
     return { plans: transformedPlans as PlanDto[] };
   }
@@ -27,6 +35,14 @@ export class PlanService {
       ...plan,
       apiLimit: typeof plan.apiLimit === 'object' ? Number(plan.apiLimit) : plan.apiLimit,
       mappingLimit: typeof plan.mappingLimit === 'object' ? Number(plan.mappingLimit) : plan.mappingLimit,
+      scanBudget: {
+        maxFolders: plan.maxFolders,
+        maxFiles: plan.maxFiles,
+        maxDeepFiles: plan.maxDeepFiles,
+        maxAiRequests: plan.maxAiRequests,
+        maxAiTokens: plan.maxAiTokens,
+        maxRepositorySize: plan.maxRepoSizeMb,
+      } as ScanBudget,
     };
     return { plan: transformedPlan as PlanDto };
   }
