@@ -1,21 +1,33 @@
-import { Controller, Post, Body, Get, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.gaurd';
 import { ProjectService } from './project.service';
 import { ProjectListResponseDto, ProjectResponseDto } from './dtos/project.dto';
 import { CreateProjectDto } from './dtos/create-project.dto';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 @Controller('projects')
 export class ProjectController {
-  constructor(
-    private readonly projectService: ProjectService,
-  ) {}
+  constructor(private readonly projectService: ProjectService) {}
 
-  @Get('/user/:userId')
-  async getProjectsAsync(@Param('userId') userId: string): Promise<ProjectListResponseDto> {
+  @Get('/')
+  @UseGuards(JwtAuthGuard) // apply to whole controller, or per-route
+  async getProjectsAsync(
+    @CurrentUser('id') userId: string,
+  ): Promise<ProjectListResponseDto> {
     return this.projectService.GetByUserIdAsync(userId);
   }
 
   @Get('/:projectId')
-  async getProjectByIdAsync(@Param('projectId') projectId: string): Promise<ProjectResponseDto> {
+  async getProjectByIdAsync(
+    @Param('projectId') projectId: string,
+  ): Promise<ProjectResponseDto> {
     return this.projectService.GetByIdAsync(Number(projectId));
   }
 
@@ -26,5 +38,4 @@ export class ProjectController {
     const project = await this.projectService.createProject(dto, userId);
     // return { projectId: project.id };
   }
-
 }

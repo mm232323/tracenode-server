@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { ScanBudgetService, BudgetCheckResult } from './scan-budget.service';
+import { ScanBudgetService } from './scan-budget.service';
 import { StartScanDto, ScanProgressDto, ScanCompleteDto } from './dtos/scan.dto';
 
 @Injectable()
@@ -10,16 +10,36 @@ export class ScanService {
     private scanBudgetService: ScanBudgetService,
   ) {}
 
+  /**
+   * Get user by backend token (accessToken)
+   */
+  async getUserByToken(token: string) {
+    if (!token) {
+      return null;
+    }
+    return this.prisma.user.findUnique({
+      where: { accessToken: token },
+    });
+  }
+
   async startScan(
     userId: string,
     scanData: StartScanDto,
   ): Promise<{ analysisRunId: string; message: string }> {
+    console.log('Starting scan for userId:', userId);
+
     // Find or create project for this repository
     const project = await this.findOrCreateProject(
       userId,
       scanData.repository.owner,
       scanData.repository.name,
     );
+
+    console.log('Project found/created:', project.id);
+
+    // Get user's scan budget once
+    const userBudget = await this.scanBudgetService.getUserScanBudget(userId);
+    console.log('User budget:', userBudget);
 
     // Create analysis run
     const analysisRun = await this.prisma.analysisRun.create({
@@ -31,11 +51,7 @@ export class ScanService {
         branch: scanData.repository.branch,
         totalFiles: scanData.stats.keptFiles,
         totalSize: scanData.stats.totalEntries,
-        budget: {
-          maxFolders: scanData.folders.length,
-          maxFiles: scanData.files.length,
-          maxDeepFiles: 0, // Will be determined by plan
-        },
+        budget: userBudget,
         consumed: {
           folders: 0,
           files: 0,
@@ -46,14 +62,39 @@ export class ScanService {
       },
     });
 
+    console.log('Analysis run created:', analysisRun.id);
+
+    // Track consumed resources locally
+    const consumed = {
+      folders: 0,
+      files: 0,
+      deepFiles: 0,
+    };
+
     // Process folders within budget
-    await this.processFolders(userId, analysisRun.id, scanData.folders);
+    await this.processFolders(userId, analysisRun.id, scanData.folders, userBudget, consumed);
 
     // Process files within budget
-    await this.processFiles(userId, analysisRun.id, scanData.files);
+    await this.processFiles(userId, analysisRun.id, scanData.files, userBudget, consumed);
 
     // Select top priority files for deep analysis
-    await this.selectDeepAnalysisFiles(userId, analysisRun.id, scanData.files);
+    await this.selectDeepAnalysisFiles(userId, analysisRun.id, scanData.files, userBudget, consumed);
+
+    // Update consumed in database
+    await this.prisma.analysisRun.update({
+      where: { id: analysisRun.id },
+      data: {
+        consumed: {
+          folders: consumed.folders,
+          files: consumed.files,
+          deepFiles: consumed.deepFiles,
+          aiRequests: 0,
+          aiTokens: 0,
+        },
+      },
+    });
+
+    console.log('Scan completed. Consumed:', consumed);
 
     return {
       analysisRunId: analysisRun.id,
@@ -111,7 +152,8 @@ export class ScanService {
     owner: string,
     repoName: string,
   ) {
-    // First, find the repository
+    console.log('Finding or creating project for userId:', userId, 'owner:', owner, 'repoName:', repoName);
+
     let repository = await this.prisma.repository.findFirst({
       where: {
         userId,
@@ -121,6 +163,7 @@ export class ScanService {
     });
 
     if (!repository) {
+      console.log('Repository not found, creating new one');
       repository = await this.prisma.repository.create({
         data: {
           userId,
@@ -129,9 +172,11 @@ export class ScanService {
           branch: 'main',
         },
       });
+      console.log('Repository created:', repository.id);
+    } else {
+      console.log('Repository found:', repository.id);
     }
 
-    // Then find or create the project
     let project = await this.prisma.project.findFirst({
       where: {
         userId,
@@ -140,6 +185,7 @@ export class ScanService {
     });
 
     if (!project) {
+      console.log('Project not found, creating new one');
       project = await this.prisma.project.create({
         data: {
           userId,
@@ -149,6 +195,9 @@ export class ScanService {
           visibility: 'PRIVATE',
         },
       });
+      console.log('Project created:', project.id);
+    } else {
+      console.log('Project found:', project.id);
     }
 
     return project;
@@ -158,15 +207,12 @@ export class ScanService {
     userId: string,
     analysisRunId: string,
     folders: any[],
+    budget: any,
+    consumed: any,
   ) {
     for (const folder of folders) {
-      const budgetCheck = await this.scanBudgetService.canScanFolder(
-        userId,
-        analysisRunId,
-      );
-
-      if (!budgetCheck.allowed) {
-        console.log(`Folder budget check failed: ${budgetCheck.reason}`);
+      if (consumed.folders >= budget.maxFolders) {
+        console.log(`Folder budget reached: ${consumed.folders}/${budget.maxFolders}`);
         break;
       }
 
@@ -174,10 +220,12 @@ export class ScanService {
         data: {
           analysisRunId,
           path: folder.path,
-          filesCount: 0, // Will be updated as files are processed
+          filesCount: 0,
           sizeBytes: 0,
         },
       });
+
+      consumed.folders++;
     }
   }
 
@@ -185,15 +233,12 @@ export class ScanService {
     userId: string,
     analysisRunId: string,
     files: any[],
+    budget: any,
+    consumed: any,
   ) {
     for (const file of files) {
-      const budgetCheck = await this.scanBudgetService.canAddFile(
-        userId,
-        analysisRunId,
-      );
-
-      if (!budgetCheck.allowed) {
-        console.log(`File budget check failed: ${budgetCheck.reason}`);
+      if (consumed.files >= budget.maxFiles) {
+        console.log(`File budget reached: ${consumed.files}/${budget.maxFiles}`);
         break;
       }
 
@@ -204,6 +249,8 @@ export class ScanService {
           size: file.size,
         },
       });
+
+      consumed.files++;
     }
   }
 
@@ -211,22 +258,17 @@ export class ScanService {
     userId: string,
     analysisRunId: string,
     files: any[],
+    budget: any,
+    consumed: any,
   ) {
-    // Sort files by priority (already sorted from client)
     const sortedFiles = files.sort((a, b) => b.priority - a.priority);
 
     for (const file of sortedFiles) {
-      const budgetCheck = await this.scanBudgetService.canDeepAnalyzeFile(
-        userId,
-        analysisRunId,
-      );
-
-      if (!budgetCheck.allowed) {
-        console.log(`Deep analysis budget check failed: ${budgetCheck.reason}`);
+      if (consumed.deepFiles >= budget.maxDeepFiles) {
+        console.log(`Deep analysis budget reached: ${consumed.deepFiles}/${budget.maxDeepFiles}`);
         break;
       }
 
-      // Check if file already exists in tree files
       const treeFile = await this.prisma.treeFile.findFirst({
         where: {
           analysisRunId,
@@ -235,15 +277,41 @@ export class ScanService {
       });
 
       if (treeFile) {
-        // Mark this file for deep analysis
+        // Create or find the corresponding File record
+        let fileRecord = await this.prisma.file.findFirst({
+          where: {
+            analysisRunId,
+            path: file.path,
+          },
+        });
+
+        if (!fileRecord) {
+          fileRecord = await this.prisma.file.create({
+            data: {
+              analysisRunId,
+              path: file.path,
+              status: 'QUEUED',
+            },
+          });
+        }
+
+        // Update treeFile to link to the file record
+        await this.prisma.treeFile.update({
+          where: { id: treeFile.id },
+          data: { fileId: fileRecord.id },
+        });
+
+        // Now create the deep file record
         await this.prisma.deepFile.create({
           data: {
             analysisRunId,
-            fileId: treeFile.id,
+            fileId: fileRecord.id,
             score: file.priority,
             reason: file.reasons?.join(', ') || 'High priority file',
           },
         });
+
+        consumed.deepFiles++;
       }
     }
   }

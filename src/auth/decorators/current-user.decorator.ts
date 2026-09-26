@@ -1,3 +1,4 @@
+// src/auth/decorators/current-user.decorator.ts
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export const CurrentUser = createParamDecorator(
@@ -5,12 +6,6 @@ export const CurrentUser = createParamDecorator(
     const request = ctx.switchToHttp().getRequest();
     const user = request.user;
 
-    // If data is provided, return specific property
-    if (data) {
-      return user?.[data];
-    }
-
-    // Otherwise return the full user object
-    return user;
+    return data ? user?.[data] : user;
   },
 );

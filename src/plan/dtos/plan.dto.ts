@@ -18,6 +18,7 @@ export class ScanBudget {
 
   @IsNumber()
   maxRepositorySize: number; // in MB
+    [key: string]: any;
 }
 
 export class PlanDto {

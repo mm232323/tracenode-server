@@ -1,4 +1,5 @@
 import { IsString, IsNumber, IsOptional, IsArray, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ScanFolderDto {
   @IsString()
@@ -49,30 +50,36 @@ export class ScanStatsDto {
   droppedByCap: number;
 }
 
+export class RepositoryDto {
+  @IsString()
+  owner: string;
+
+  @IsString()
+  name: string;
+
+  @IsString()
+  branch: string;
+
+  @IsString()
+  treeSha: string;
+}
+
 export class StartScanDto {
-  repository: {
-    @IsString()
-    owner: string;
-
-    @IsString()
-    name: string;
-
-    @IsString()
-    branch: string;
-
-    @IsString()
-    treeSha: string;
-  };
+  @Type(() => RepositoryDto)
+  repository: RepositoryDto;
 
   @IsBoolean()
   truncated: boolean;
 
   @IsArray()
+  @Type(() => ScanFolderDto)
   folders: ScanFolderDto[];
 
   @IsArray()
+  @Type(() => ScanFileDto)
   files: ScanFileDto[];
 
+  @Type(() => ScanStatsDto)
   stats: ScanStatsDto;
 }
 

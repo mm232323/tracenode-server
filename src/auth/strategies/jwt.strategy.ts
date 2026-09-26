@@ -3,11 +3,15 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 import { UserService } from 'src/user/user.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private usersService: UserService) {
+  constructor(
+    private usersService: UserService,
+    private prisma: PrismaService
+  ) {
     super({
       // Extract JWT from multiple sources
       jwtFromRequest: ExtractJwt.fromExtractors([
@@ -39,14 +43,42 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    */
   async validate(payload: any) {
     try {
-      // Option 1: Just return the payload (stateless)
-      return {
-        userId: payload.sub,
-        email: payload.email,
-        name: payload.name,
-        level: payload.level,
+      console.log('JWT Payload:', payload);
+
+      // Use payload.id instead of payload.sub based on the actual JWT structure
+      const userId = payload.id || payload.sub;
+
+      if (!userId) {
+        console.error('No user ID in JWT payload');
+        throw new UnauthorizedException('Invalid token payload');
+      }
+
+      console.log('Looking for user with ID:', userId);
+
+      // Check if the user exists in the database
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { plan: true },
+      });
+
+      if (!user) {
+        console.error('User not found in database:', userId);
+        throw new UnauthorizedException('User not found');
+      }
+
+      // Return user object with required fields
+      const userObject = {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        fullName: user.fullName,
+        plan: user.plan,
       };
+
+      console.log('Returning user object:', userObject);
+      return userObject;
     } catch (error) {
+      console.error('JWT validation error:', error);
       throw new UnauthorizedException('Invalid token');
     }
   }

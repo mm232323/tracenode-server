@@ -1,54 +1,107 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ScanBudget } from 'src/plan/dtos/plan.dto';
+import { BudgetCheckResult, ConsumedBudget } from './dtos/budget-consume.dto';
 
-export interface ConsumedBudget {
-  folders: number;
-  files: number;
-  deepFiles: number;
-  aiRequests: number;
-  aiTokens: number;
-}
 
-export interface BudgetCheckResult {
-  allowed: boolean;
-  reason?: string;
-  remaining: ConsumedBudget;
-}
 
 @Injectable()
 export class ScanBudgetService {
   constructor(private prisma: PrismaService) {}
 
-  /**
+/**
    * Get the scan budget for a user based on their plan
    */
+  
   async getUserScanBudget(userId: string): Promise<ScanBudget> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { plan: true },
-    });
-
-    if (!user?.plan) {
-      // Default to free plan if no plan assigned
-      return {
-        maxFolders: 50,
-        maxFiles: 3000,
-        maxDeepFiles: 15,
-        maxAiRequests: 100,
-        maxAiTokens: 500000,
-        maxRepositorySize: 100,
-      };
+    if (!userId) {
+      console.error('User ID is required but got:', userId);
+      throw new Error('User ID is required');
     }
 
-    return {
-      maxFolders: user.plan.maxFolders,
-      maxFiles: user.plan.maxFiles,
-      maxDeepFiles: user.plan.maxDeepFiles,
-      maxAiRequests: user.plan.maxAiRequests,
-      maxAiTokens: user.plan.maxAiTokens,
-      maxRepositorySize: user.plan.maxRepoSizeMb,
+    console.log('Fetching user scan budget for userId:', userId);
+
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { plan: true },
+      });
+
+      if (!user) {
+        console.error('User not found in database:', userId);
+        throw new Error('User not found');
+      }
+
+      if (!user.plan) {
+        console.log('User has no plan assigned, using default free plan');
+        // Default to free plan if no plan assigned
+        return {
+          maxFolders: 50,
+          maxFiles: 3000,
+          maxDeepFiles: 15,
+          maxAiRequests: 100,
+          maxAiTokens: 500000,
+          maxRepositorySize: 100,
+        };
+      }
+
+      console.log('User plan found:', user.plan.name);
+      return {
+        maxFolders: user.plan.maxFolders,
+        maxFiles: user.plan.maxFiles,
+        maxDeepFiles: user.plan.maxDeepFiles,
+        maxAiRequests: user.plan.maxAiRequests,
+        maxAiTokens: user.plan.maxAiTokens,
+        maxRepositorySize: user.plan.maxRepoSizeMb,
+      };
+    } catch (error) {
+      console.error('Error fetching user scan budget:', error);
+      throw new Error('Failed to fetch user scan budget');
+    }
+  }
+
+  /**
+   * Record AI usage (tokens and requests) against the budget
+   */
+  async recordAiUsage(
+    userId: string,
+    analysisRunId: string,
+    tokensUsed: number,
+    requestsMade: number,
+  ): Promise<void> {
+    // Update the analysis run's consumed budget
+    const analysisRun = await this.prisma.analysisRun.findUnique({
+      where: { id: analysisRunId },
+    });
+
+    if (!analysisRun) {
+      return;
+    }
+
+    const consumed = analysisRun.consumed as {
+      folders: number;
+      files: number;
+      deepFiles: number;
+      aiRequests: number;
+      aiTokens: number;
+    } || {
+      folders: 0,
+      files: 0,
+      deepFiles: 0,
+      aiRequests: 0,
+      aiTokens: 0,
     };
+
+    await this.prisma.analysisRun.update({
+      where: { id: analysisRunId },
+      data: {
+        consumed: {
+          ...consumed,
+          aiRequests: consumed.aiRequests + requestsMade,
+          aiTokens: consumed.aiTokens + tokensUsed,
+        },
+      },
+    });
   }
 
   /**

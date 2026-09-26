@@ -59,7 +59,7 @@ model User {
   googleId String? @unique @map("google_id")
   githubId String? @unique @map("github_id")
 
-  accessToken  String?   @map("access_token")
+  accessToken  String?   @unique @map("access_token")
   refreshToken String?   @map("refresh_token")
   lastLogin    DateTime? @map("last_login")
 
@@ -95,12 +95,12 @@ model Plan {
   usages Usage[]
 
   // Scan budget fields
-  maxFolders       Int    @default(50)      @map("max_folders")
-  maxFiles         Int    @default(3000)    @map("max_files")
-  maxDeepFiles     Int    @default(15)      @map("max_deep_files")
-  maxAiRequests    Int    @default(100)     @map("max_ai_requests")
-  maxAiTokens      Int    @default(500000)  @map("max_ai_tokens")
-  maxRepoSizeMb    Int    @default(100)     @map("max_repo_size_mb")
+  maxFolders    Int @default(50) @map("max_folders")
+  maxFiles      Int @default(3000) @map("max_files")
+  maxDeepFiles  Int @default(15) @map("max_deep_files")
+  maxAiRequests Int @default(100) @map("max_ai_requests")
+  maxAiTokens   Int @default(500000) @map("max_ai_tokens")
+  maxRepoSizeMb Int @default(100) @map("max_repo_size_mb")
 
   @@map("plans")
 }
@@ -170,8 +170,8 @@ model Project {
   repository Repository @relation(fields: [repositoryId], references: [id])
   user       User       @relation(fields: [userId], references: [id])
 
-  nodes Node[]
-  scans Scan[]
+  nodes        Node[]
+  scans        Scan[]
   analysisRuns AnalysisRun[]
 
   @@map("projects")
@@ -258,36 +258,34 @@ model Api {
   @@map("apis")
 }
 
-
-
 model AnalysisRun {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
   projectId   BigInt
-  userId      String   @db.Uuid
-  status      String   @default("PENDING") // PENDING, SCANNING, DEEP_ANALYSIS, COMPLETED, FAILED
-  budget      Json     // { maxFolders, maxDeepFiles, maxAiRequests, maxAiTokens, maxRepoMb, ... }
-  consumed    Json     // { folders: 0, deepFiles: 0, aiRequests: 0, aiTokens: 0 }
-  startedAt   DateTime @default(now())
+  userId      String    @db.Uuid
+  status      String    @default("PENDING") // PENDING, SCANNING, DEEP_ANALYSIS, COMPLETED, FAILED
+  budget      Json // { maxFolders, maxDeepFiles, maxAiRequests, maxAiTokens, maxRepoMb, ... }
+  consumed    Json // { folders: 0, deepFiles: 0, aiRequests: 0, aiTokens: 0 }
+  startedAt   DateTime  @default(now())
   completedAt DateTime?
 
-  project Project @relation(fields: [projectId], references: [id])
-  user    User    @relation(fields: [userId], references: [id])
-  folders     Folder[]
-  deepFiles   DeepFile[]
-  files       File[]
-  treeFiles   TreeFile[]
+  project   Project    @relation(fields: [projectId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+  folders   Folder[]
+  deepFiles DeepFile[]
+  files     File[]
+  treeFiles TreeFile[]
 
-  treeSha      String?            @map("tree_sha")
-  branch       String?
-  totalSize    Int    @default(0) @map("total_size")
-  totalFiles   Int    @default(0) @map("total_files")
+  treeSha    String? @map("tree_sha")
+  branch     String?
+  totalSize  Int     @default(0) @map("total_size")
+  totalFiles Int     @default(0) @map("total_files")
 
   @@map("analysis_runs")
 }
 
 model Folder {
-  id            String   @id @default(uuid()) @db.Uuid
-  analysisRunId String   @db.Uuid
+  id            String @id @default(uuid()) @db.Uuid
+  analysisRunId String @db.Uuid
   path          String
   filesCount    Int
   sizeBytes     Int
@@ -325,11 +323,11 @@ model DeepFile {
 }
 
 model TreeFile {
-  id            String   @id @default(uuid()) @db.Uuid
-  analysisRunId String   @db.Uuid
+  id            String  @id @default(uuid()) @db.Uuid
+  analysisRunId String  @db.Uuid
   path          String
   size          Int?
-  fileId        String?  @db.Uuid
+  fileId        String? @db.Uuid
 
   analysisRun AnalysisRun @relation(fields: [analysisRunId], references: [id])
   file        File?       @relation("File", fields: [fileId], references: [id])

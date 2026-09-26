@@ -92,7 +92,6 @@ export class UserService {
         plan: true,
       }
     });
-    console.log('user', user);
     return { user: this.sanitizeUser(user) };
   }
   async UpdateAsync(userId: string, data: Partial<UserDto>): Promise<UserResponseDto> {
