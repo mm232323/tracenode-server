@@ -1,13 +1,23 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import * as axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ScanBudgetService } from './scan-budget.service';
+import { AiAnalysisService } from './ai-analysis.service';
 import { StartScanDto, ScanProgressDto, ScanCompleteDto } from './dtos/scan.dto';
 
 @Injectable()
 export class ScanService {
+  // Only source files are worth sending to the AI
+  private static readonly ANALYZABLE_EXT = new Set([
+    'ts', 'tsx', 'js', 'jsx', 'py', 'java', 'cs', 'go', 'php', 'rb', 'kt', 'rs',
+  ]);
+  private static readonly IGNORED_NAMES =
+    /(^|\/)(nest-cli\.json|package(-lock)?\.json|tsconfig.*\.json|README\.md|Dockerfile=)$|\.(spec|test|d)\.ts$/i;
+
   constructor(
     private prisma: PrismaService,
     private scanBudgetService: ScanBudgetService,
+    private aiAnalysisService: AiAnalysisService,
   ) {}
 
   /**
@@ -28,20 +38,16 @@ export class ScanService {
   ): Promise<{ analysisRunId: string; message: string }> {
     console.log('Starting scan for userId:', userId);
 
-    // Find or create project for this repository
     const project = await this.findOrCreateProject(
       userId,
       scanData.repository.owner,
       scanData.repository.name,
     );
-
     console.log('Project found/created:', project.id);
 
-    // Get user's scan budget once
     const userBudget = await this.scanBudgetService.getUserScanBudget(userId);
     console.log('User budget:', userBudget);
 
-    // Create analysis run
     const analysisRun = await this.prisma.analysisRun.create({
       data: {
         projectId: project.id,
@@ -61,26 +67,22 @@ export class ScanService {
         },
       },
     });
-
     console.log('Analysis run created:', analysisRun.id);
 
-    // Track consumed resources locally
-    const consumed = {
-      folders: 0,
-      files: 0,
-      deepFiles: 0,
-    };
+    const consumed = { folders: 0, files: 0, deepFiles: 0 };
 
-    // Process folders within budget
     await this.processFolders(userId, analysisRun.id, scanData.folders, userBudget, consumed);
-
-    // Process files within budget
     await this.processFiles(userId, analysisRun.id, scanData.files, userBudget, consumed);
 
-    // Select top priority files for deep analysis
-    await this.selectDeepAnalysisFiles(userId, analysisRun.id, scanData.files, userBudget, consumed);
+    await this.selectDeepAnalysisFiles(
+      userId,
+      analysisRun.id,
+      scanData.files,
+      userBudget,
+      consumed,
+      scanData.repository,
+    );
 
-    // Update consumed in database
     await this.prisma.analysisRun.update({
       where: { id: analysisRun.id },
       data: {
@@ -147,30 +149,17 @@ export class ScanService {
     };
   }
 
-  private async findOrCreateProject(
-    userId: string,
-    owner: string,
-    repoName: string,
-  ) {
+  private async findOrCreateProject(userId: string, owner: string, repoName: string) {
     console.log('Finding or creating project for userId:', userId, 'owner:', owner, 'repoName:', repoName);
 
     let repository = await this.prisma.repository.findFirst({
-      where: {
-        userId,
-        repoName,
-        owner,
-      },
+      where: { userId, repoName, owner },
     });
 
     if (!repository) {
       console.log('Repository not found, creating new one');
       repository = await this.prisma.repository.create({
-        data: {
-          userId,
-          repoName,
-          owner,
-          branch: 'main',
-        },
+        data: { userId, repoName, owner, branch: 'main' },
       });
       console.log('Repository created:', repository.id);
     } else {
@@ -178,10 +167,7 @@ export class ScanService {
     }
 
     let project = await this.prisma.project.findFirst({
-      where: {
-        userId,
-        repositoryId: repository.id,
-      },
+      where: { userId, repositoryId: repository.id },
     });
 
     if (!project) {
@@ -217,12 +203,7 @@ export class ScanService {
       }
 
       await this.prisma.folder.create({
-        data: {
-          analysisRunId,
-          path: folder.path,
-          filesCount: 0,
-          sizeBytes: 0,
-        },
+        data: { analysisRunId, path: folder.path, filesCount: 0, sizeBytes: 0 },
       });
 
       consumed.folders++;
@@ -243,15 +224,50 @@ export class ScanService {
       }
 
       await this.prisma.treeFile.create({
-        data: {
-          analysisRunId,
-          path: file.path,
-          size: file.size,
-        },
+        data: { analysisRunId, path: file.path, size: file.size },
       });
 
       consumed.files++;
     }
+  }
+
+  // ---------- GitHub content fetching ----------
+
+  private isAnalyzable(path: string): boolean {
+    if (ScanService.IGNORED_NAMES.test(path)) return false;
+    const ext = path.split('.').pop()?.toLowerCase() || '';
+    return ScanService.ANALYZABLE_EXT.has(ext);
+  }
+
+  private async getGithubToken(userId: string): Promise<string | undefined> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    // TODO: replace `githubAccessToken` with the field that stores the user's GitHub token
+    return (user as any)?.githubAccessToken ?? process.env.GITHUB_TOKEN;
+  }
+
+  private async fetchFileContent(
+    owner: string,
+    repo: string,
+    path: string,
+    ref: string,
+    token?: string,
+  ): Promise<string> {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const res = await axios.default.get(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`,
+      {
+        params: { ref },
+        headers: {
+          Accept: 'application/vnd.github.raw+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        responseType: 'text',
+        transformResponse: (r) => r, // keep raw text, don't JSON-parse
+        timeout: 30_000,
+      },
+    );
+    return res.data as string;
   }
 
   private async selectDeepAnalysisFiles(
@@ -260,58 +276,80 @@ export class ScanService {
     files: any[],
     budget: any,
     consumed: any,
+    repository: { owner: string; name: string; branch: string },
   ) {
-    const sortedFiles = files.sort((a, b) => b.priority - a.priority);
+    const githubToken = await this.getGithubToken(userId);
+    if (!githubToken) {
+      console.warn('No GitHub token available: private repos will fail and public ones are rate-limited');
+    }
 
-    for (const file of sortedFiles) {
+    const candidates = [...files]
+      .filter((f) => this.isAnalyzable(f.path))
+      .sort((a, b) => b.priority - a.priority);
+
+    for (const file of candidates) {
       if (consumed.deepFiles >= budget.maxDeepFiles) {
         console.log(`Deep analysis budget reached: ${consumed.deepFiles}/${budget.maxDeepFiles}`);
         break;
       }
 
       const treeFile = await this.prisma.treeFile.findFirst({
-        where: {
+        where: { analysisRunId, path: file.path },
+      });
+      if (!treeFile) continue;
+
+      // Fetch content BEFORE creating records so a failed fetch doesn't use up a slot
+      let content: string;
+      try {
+        content = await this.fetchFileContent(
+          repository.owner,
+          repository.name,
+          file.path,
+          repository.branch,
+          githubToken,
+        );
+      } catch (e) {
+        const status = (e as any)?.response?.status;
+        console.error(`Could not fetch ${file.path} (${status ?? (e as Error).message})`);
+        continue;
+      }
+      if (!content.trim()) continue;
+
+      let fileRecord = await this.prisma.file.findFirst({
+        where: { analysisRunId, path: file.path },
+      });
+
+      if (!fileRecord) {
+        fileRecord = await this.prisma.file.create({
+          data: { analysisRunId, path: file.path, status: 'QUEUED', content },
+        });
+      } else if (!fileRecord.content) {
+        fileRecord = await this.prisma.file.update({
+          where: { id: fileRecord.id },
+          data: { content },
+        });
+      }
+
+      await this.prisma.treeFile.update({
+        where: { id: treeFile.id },
+        data: { fileId: fileRecord.id },
+      });
+
+      const deepFileRecord = await this.prisma.deepFile.create({
+        data: {
           analysisRunId,
-          path: file.path,
+          fileId: fileRecord.id,
+          score: file.priority,
+          reason: file.reasons?.join(', ') || 'High priority file',
         },
       });
 
-      if (treeFile) {
-        // Create or find the corresponding File record
-        let fileRecord = await this.prisma.file.findFirst({
-          where: {
-            analysisRunId,
-            path: file.path,
-          },
-        });
+      consumed.deepFiles++;
 
-        if (!fileRecord) {
-          fileRecord = await this.prisma.file.create({
-            data: {
-              analysisRunId,
-              path: file.path,
-              status: 'QUEUED',
-            },
-          });
-        }
-
-        // Update treeFile to link to the file record
-        await this.prisma.treeFile.update({
-          where: { id: treeFile.id },
-          data: { fileId: fileRecord.id },
-        });
-
-        // Now create the deep file record
-        await this.prisma.deepFile.create({
-          data: {
-            analysisRunId,
-            fileId: fileRecord.id,
-            score: file.priority,
-            reason: file.reasons?.join(', ') || 'High priority file',
-          },
-        });
-
-        consumed.deepFiles++;
+      try {
+        await this.aiAnalysisService.analyzeDeepFile(deepFileRecord.id);
+      } catch (error) {
+        console.error(`Failed to analyze deep file ${deepFileRecord.id}:`, (error as Error).message);
       }
     }
   }

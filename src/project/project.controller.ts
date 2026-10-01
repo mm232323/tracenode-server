@@ -12,12 +12,14 @@ import { ProjectService } from './project.service';
 import { ProjectListResponseDto, ProjectResponseDto } from './dtos/project.dto';
 import { CreateProjectDto } from './dtos/create-project.dto';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { ProjectGraphResponseDto } from './dtos/project.dto';
+
 @Controller('projects')
 export class ProjectController {
   constructor(private readonly projectService: ProjectService) {}
 
   @Get('/')
-  @UseGuards(JwtAuthGuard) // apply to whole controller, or per-route
+  @UseGuards(JwtAuthGuard)
   async getProjectsAsync(
     @CurrentUser('id') userId: string,
   ): Promise<ProjectListResponseDto> {
@@ -29,6 +31,13 @@ export class ProjectController {
     @Param('projectId') projectId: string,
   ): Promise<ProjectResponseDto> {
     return this.projectService.GetByIdAsync(Number(projectId));
+  }
+
+  @Get('/:projectId/graph')
+  async getProjectGraphAsync(
+    @Param('projectId') projectId: string,
+  ): Promise<ProjectGraphResponseDto> {
+    return this.projectService.GetProjectGraphAsync(Number(projectId));
   }
 
   @Post()
